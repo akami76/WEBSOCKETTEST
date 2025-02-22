@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>실시간 트랜잭션 모니터링</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f0f0f0;
+        }
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            width: 100%;
+        }
+        .panel {
+            background: white;
+            padding: 8px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            font-size: 11px;
+            width: 100%;
+            box-sizing: border-box;
+            min-width: 0;
+            position: relative;
+            z-index: 1;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .panel.dragging {
+            opacity: 0.7;
+            transform: scale(1.02);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+        }
+        .panel-header {
+            cursor: move;
+            user-select: none;  /* 드래그 중 텍스트 선택 방지 */
+        }
+        .panel-header input,
+        .panel-header button {
+            cursor: pointer;
+        }
+        .dashboard.dragging {
+            background-color: rgba(0,0,0,0.02);
+        }
+        .panel-placeholder {
+            border: 2px dashed #ccc;
+            background-color: rgba(0,0,0,0.05);
+            border-radius: 8px;
+        }
+        .message-list {
+            height: 300px;
+            overflow-y: auto;
+            overflow-x: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-top: 4px;
+            font-family: 'Consolas', monospace;
+            font-size: 10px;
+            line-height: 1.3;
+            background-color: #f8f9fa;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .message-item {
+            margin: 2px 0;
+            padding: 3px 5px;
+            border-bottom: 1px solid #eee;
+            white-space: pre-wrap;
+            overflow-x: auto;
+            border-radius: 4px;
+            font-size: 10px;
+            width: 100%;
+            box-sizing: border-box;
+            transition: background-color 0.2s ease;
+            background-color: transparent;
+        }
+        .message-item.nowrap {
+            white-space: nowrap;
+            overflow-x: auto;
+        }
+        .status-success { 
+            color: #2e7d32;
+        }
+        .status-error { 
+            color: #c62828;
+        }
+        .message-item:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .status-success:hover {
+            background-color: rgba(46, 125, 50, 0.1);
+        }
+        .status-error:hover {
+            background-color: rgba(198, 40, 40, 0.1);
+        }
+        h3 {
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        h2 { 
+            margin-top: 0; 
+            font-size: 12px;
+            color: #333;
+        }
+        .panel-header {
+            display: flex;
+            gap: 2px;
+            padding-bottom: 4px;
+            flex-wrap: wrap;
+            overflow-x: auto;
+            flex-direction: column;
+        }
+        .panel-header-top {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            width: 100%;
+        }
+        .panel-header-controls {
+            display: flex;
+            justify-content: flex-end;
+            width: 100%;
+            margin-top: 2px;
+        }
+        .connection-info {
+            display: flex;
+            gap: 2px;
+            font-size: 10px;
+            white-space: nowrap;
+        }
+        .connection-info input {
+            padding: 1px 3px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 10px;
+            font-family: 'Consolas', monospace;
+            width: auto;
+        }
+        .connection-info input[type="text"] {
+            flex: 1;
+        }
+        .connection-info .topic-input {
+            width: 150px;
+        }
+        .connection-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 2px;
+            flex-shrink: 0;
+        }
+        .connection-status.connected {
+            background-color: #4caf50;
+        }
+        .connection-status.disconnected {
+            background-color: #f44336;
+        }
+        .panel-title {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .panel-title h2 {
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            font-size: 11px;
+        }
+        .last-received {
+            font-size: 10px;
+            color: #666;
+            font-weight: normal;
+            margin-right: auto;
+            padding-top: 3px;
+        }
+        .message-counter {
+            font-size: 9px;
+            color: #666;
+            font-weight: normal;
+            margin-left: 1px;
+        }
+        .panel.status-normal {
+            background-color: rgba(76, 175, 80, 0.1);
+        }
+        .panel.status-error {
+            background-color: rgba(244, 67, 54, 0.1);
+        }
+        .toolbar {
+            background: white;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        .add-panel-btn {
+            padding: 5px 15px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .add-panel-btn:hover {
+            background: #45a049;
+        }
+        .panel-controls {
+            display: flex;
+            gap: 2px;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        .control-btn {
+            background: none;
+            border: none;
+            border-radius: 4px;
+            padding: 3px;
+            cursor: pointer;
+            font-size: 10px;
+            display: flex;
+            align-items: center;
+            width: 20px;
+            height: 20px;
+            justify-content: center;
+            transition: all 0.2s ease;
+            color: #666;
+            position: relative;
+            z-index: 2;
+        }
+        .control-btn:hover {
+            background-color: rgba(0,0,0,0.1);
+            transform: scale(1.1);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .control-btn.active {
+            background-color: #4CAF50;
+            color: white;
+            transform: scale(1.05);
+        }
+        .control-btn.active:hover {
+            background-color: #45a049;
+            transform: scale(1.15);
+        }
+        .delete-btn {
+            color: #ff5252;
+        }
+        .delete-btn:hover {
+            color: #ff1744;
+            background-color: rgba(255,23,68,0.1);
+        }
+        .control-btn.pause {
+            color: #ff9800;
+        }
+        .control-btn.pause:hover {
+            background-color: rgba(255,152,0,0.1);
+        }
+        .control-btn.pause.active {
+            background-color: #ff9800;
+            color: white;
+        }
+        .control-btn.pause.active:hover {
+            background-color: #f57c00;
+        }
+        .control-btn i {
+            font-size: 12px;
+        }
+        .panel-title h2 [contenteditable] {
+            border-bottom: 1px dashed #ccc;
+            padding: 1px 3px;
+            min-width: 50px;
+        }
+        .panel-title h2 [contenteditable]:focus {
+            outline: none;
+            border-bottom: 2px solid #4CAF50;
+        }
+        .message-item.wrap {
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .panel-filters {
+            display: flex;
+            margin: 0 2px;
+            font-size: 10px;
+            flex: 1;
+        }
+        .filter-input {
+            flex: 1;
+            padding: 1px 3px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 10px;
+        }
+        .pause-toggle.active::after {
+            content: attr(data-new-messages);
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #ff9800;
+            color: white;
+            padding: 1px 4px;
+            border-radius: 12px;
+            font-size: 8px;
+            min-width: 12px;
+            height: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .pause-toggle.active[data-new-messages]::after {
+            display: block;
+        }
+        .control-btn::after {
+            content: attr(title);
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 4px 8px;
+            background-color: rgba(0,0,0,0.8);
+            color: white;
+            font-size: 10px;
+            border-radius: 4px;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s ease;
+            pointer-events: none;
+            z-index: 9999;
+        }
+        .control-btn:hover::after {
+            opacity: 1;
+            visibility: visible;
+            top: -30px;
+        }
+        .global-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-left: auto;
+        }
+        .global-filter {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .global-filter input {
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 12px;
+            width: 250px;
+        }
+        .global-btn {
+            padding: 4px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+            background: #666;
+            color: white;
+        }
+        .global-btn:hover {
+            background: #555;
+        }
+        .global-btn.active {
+            background: #ff9800;
+        }
+        .global-btn.active:hover {
+            background: #f57c00;
+        }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <h3>실시간 트랜잭션 모니터링</h3>
+    <div class="toolbar">
+        <button class="add-panel-btn" onclick="addNewPanel()">+ 새 모니터링 패널 추가</button>
+        <div class="global-controls">
+            <div class="global-filter">
+                <input type="text" 
+                       id="global-filter-input" 
+                       placeholder="전체 패널 필터 (예: status:error, method:GET)"
+                       onkeyup="applyGlobalFilter(this.value)">
+            </div>
+            <button class="global-btn" id="global-wrap-btn" onclick="toggleGlobalWrap()">
+                <i class="fas fa-align-justify"></i>
+                <span>전체 한 줄 표시</span>
+            </button>
+            <button class="global-btn" id="global-pause-btn" onclick="toggleGlobalPause()">
+                <i class="fas fa-pause"></i>
+                <span>전체 일시정지</span>
+            </button>
+        </div>
+    </div>
+    <div class="dashboard">
+        <!-- 기존 패널들 제거 -->
+    </div>
+
+    <script>
+        const connections = new Map();
+        
+        // 패널 템플릿 생성 함수
+        function createPanelTemplate(id, title = '새 모니터링', wsUrl = 'ws://localhost:8080/ws', topic = '/topic/default', wrap = false) {
+            const defaultTopic = '/topic/request';
+            return {
+                id,
+                title,
+                wsUrl,
+                topic: topic || defaultTopic,
+                connection: null,
+                wrap: wrap,
+                paused: false,
+                pausedMessages: []  // 일시정지 중에 수신된 메시지 저장
+            };
+        }
+        
+        // HTML 패널 생성
+        function createPanelElement(panel) {
+            const div = document.createElement('div');
+            div.className = 'panel';
+            div.id = `panel-${panel.id}`;
+            
+            div.innerHTML = `
+                <div class="panel-header">
+                    <div class="panel-header-top">
+                        <div class="connection-status disconnected" data-type="${panel.id}"></div>
+                        <div class="panel-title">
+                            <h2>
+                                <span contenteditable="true" onblur="updatePanelTitle('${panel.id}', this.textContent)">${panel.title}</span>
+                                <span class="message-counter" data-type="${panel.id}">0</span>
+                            </h2>
+                        </div>
+                        <div class="connection-info">
+                            <input type="text" class="ws-input" value="${panel.wsUrl}" data-type="${panel.id}">
+                            <input type="text" class="topic-input" value="${panel.topic}" data-type="${panel.id}">
+                        </div>
+                        <div class="panel-filters">
+                            <input type="text" 
+                                   class="filter-input" 
+                                   placeholder="필터 (예: status:error, method:GET)"
+                                   onkeyup="filterMessages('${panel.id}', this.value)">
+                        </div>
+                    </div>
+                    <div class="panel-header-controls">
+                        <span class="last-received" data-type="${panel.id}">-</span>
+                        <div class="panel-controls">
+                            <button class="control-btn pause-toggle ${panel.paused ? 'active' : ''}" 
+                                    onclick="togglePause('${panel.id}', !this.classList.contains('active'))"
+                                    title="${panel.paused ? '메시지 스트림 재개' : '메시지 스트림 일시정지'}">
+                                <i class="fas ${panel.paused ? 'fa-play' : 'fa-pause'}"></i>
+                            </button>
+                            <button class="control-btn wrap-toggle ${panel.wrap ? 'active' : ''}" 
+                                    onclick="toggleWrap('${panel.id}', !this.classList.contains('active'))"
+                                    title="한 줄 표시 ${panel.wrap ? 'OFF' : 'ON'}">
+                                <i class="fas fa-align-justify"></i>
+                            </button>
+                            <button class="control-btn delete-btn" 
+                                    onclick="deletePanel('${panel.id}')"
+                                    title="패널 삭제">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div id="${panel.id}-list" class="message-list"></div>
+            `;
+
+            // 헤더에만 드래그 이벤트 추가
+            const header = div.querySelector('.panel-header');
+            header.draggable = true;
+            header.addEventListener('dragstart', (e) => {
+                // 드래그 시 패널 전체를 선택
+                draggedPanel = div;
+                div.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setDragImage(div, 0, 0);
+            });
+            
+            div.addEventListener('dragend', handleDragEnd);
+            div.addEventListener('dragover', handleDragOver);
+            div.addEventListener('drop', handleDrop);
+
+            return div;
+        }
+
+        class StompClient {
+            constructor(url) {
+                this.url = url;
+                this.connected = false;
+                this.subscriptions = new Map();
+                this.connectPromise = null;
+                this.connectionResolver = null;
+                this.ws = null;
+                this.onConnectionChange = null;
+            }
+
+            async connect() {
+                if (this.connected) return;
+                
+                if (this.connectPromise) {
+                    return this.connectPromise;
+                }
+                
+                this.connectPromise = new Promise((resolve) => {
+                    this.connectionResolver = resolve;
+                });
+
+                try {
+                    this.ws = new WebSocket(this.url);
+                    
+                    this.ws.onopen = () => {
+                        console.log("WebSocket opened, sending CONNECT frame");
+                        this.sendFrame("CONNECT", {
+                            "accept-version": "1.2",
+                            "heart-beat": "10000,10000"
+                        });
+                    };
+
+                    this.ws.onmessage = (event) => {
+                        const frame = JSON.parse(event.data);
+                        this.handleFrame(frame);
+                    };
+
+                    this.ws.onclose = () => {
+                        this.connected = false;
+                        this.connectPromise = null;
+                        if (this.onConnectionChange) {
+                            this.onConnectionChange(false);
+                        }
+                        console.log("WebSocket closed");
+                        setTimeout(() => this.connect(), 5000);
+                    };
+
+                    this.ws.onerror = (error) => {
+                        console.error("WebSocket error:", error);
+                        this.connectPromise = null;
+                        if (this.onConnectionChange) {
+                            this.onConnectionChange(false);
+                        }
+                    };
+
+                } catch (error) {
+                    console.error("Connection error:", error);
+                    this.connectPromise = null;
+                    if (this.onConnectionChange) {
+                        this.onConnectionChange(false);
+                    }
+                    setTimeout(() => this.connect(), 5000);
+                }
+                
+                return this.connectPromise;
+            }
+
+            sendFrame(command, headers = {}, body = null) {
+                if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                    console.error("WebSocket is not open");
+                    return;
+                }
+                const frame = {
+                    command: command,
+                    headers: headers
+                };
+                if (body) frame.body = body;
+                this.ws.send(JSON.stringify(frame));
+            }
+
+            handleFrame(frame) {
+                switch (frame.command) {
+                    case "CONNECTED":
+                        this.connected = true;
+                        console.log("STOMP Connected");
+                        if (this.onConnectionChange) {
+                            this.onConnectionChange(true);
+                        }
+                        if (this.connectionResolver) {
+                            this.connectionResolver();
+                            this.connectionResolver = null;
+                        }
+                        break;
+                    case "MESSAGE":
+                        const subscription = this.subscriptions.get(frame.headers.destination);
+                        if (subscription) {
+                            subscription(frame);
+                        }
+                        break;
+                }
+            }
+
+            subscribe(destination, callback) {
+                if (!this.connected) {
+                    console.error("Cannot subscribe: not connected");
+                    return;
+                }
+                const id = "sub-" + Math.random().toString(36).substr(2, 9);
+                this.subscriptions.set(destination, callback);
+                this.sendFrame("SUBSCRIBE", {
+                    "id": id,
+                    "destination": destination
+                });
+                return id;
+            }
+
+            disconnect() {
+                if (this.ws) {
+                    this.ws.close();
+                    this.connected = false;
+                    if (this.onConnectionChange) {
+                        this.onConnectionChange(false);
+                    }
+                }
+            }
+        }
+
+        function updateConnectionStatus(type, connected) {
+            const status = document.querySelector(`.connection-status[data-type="${type}"]`);
+            if (status) {
+                status.className = `connection-status ${connected ? 'connected' : 'disconnected'}`;
+            }
+        }
+        
+        function connectToWebSocket(type) {
+            const wsInput = document.querySelector(`.ws-input[data-type="${type}"]`);
+            const topicInput = document.querySelector(`.topic-input[data-type="${type}"]`);
+            
+            if (!wsInput || !topicInput) return;
+            
+            // 기존 연결이 있다면 끊기
+            if (connections.has(type)) {
+                connections.get(type).disconnect();
+            }
+            
+            const client = new StompClient(wsInput.value);
+            client.onConnectionChange = (connected) => updateConnectionStatus(type, connected);
+            connections.set(type, client);
+            
+            client.connect().then(() => {
+                client.subscribe(topicInput.value, (message) => {
+                    handleStompMessage(type, message);
+                });
+            }).catch(error => {
+                console.error(`Failed to connect ${type}:`, error);
+            });
+        }
+        
+        // 입력 필드 변경 이벤트 처리
+        document.addEventListener('change', (e) => {
+            if (e.target.matches('.ws-input, .topic-input')) {
+                const type = e.target.dataset.type;
+                connectToWebSocket(type);
+                saveState();
+            }
+        });
+        
+        window.addEventListener('load', loadState);
+
+        const messageContainers = {
+            'request': document.getElementById('request-list'),
+            'process': document.getElementById('process-list'),
+            'response': document.getElementById('response-list'),
+            'transaction': document.getElementById('transaction-list')
+        };
+
+        function formatTimestamp(timestamp) {
+            return new Date(timestamp * 1000).toLocaleTimeString();
+        }
+
+        // 드래그 앤 드롭 관련 변수
+        let draggedPanel = null;
+        let placeholder = null;
+        let initialX, initialY;
+        let panels = [];
+        let panelPositions = new Map();  // 패널 위치 저장
+
+        // 전역 상태 변수
+        let isGlobalPaused = false;
+        let isGlobalWrapped = false;
+
+        // 전체 패널 필터 적용
+        function applyGlobalFilter(filterText) {
+            document.querySelectorAll('.panel').forEach(panel => {
+                const panelId = panel.id.replace('panel-', '');
+                const filterInput = panel.querySelector('.filter-input');
+                if (filterInput) {
+                    filterInput.value = filterText;
+                    filterMessages(panelId, filterText);
+                }
+            });
+        }
+
+        // 전체 패널 일시정지/재생
+        function toggleGlobalPause() {
+            isGlobalPaused = !isGlobalPaused;
+            const btn = document.getElementById('global-pause-btn');
+            
+            document.querySelectorAll('.panel').forEach(panel => {
+                const panelId = panel.id.replace('panel-', '');
+                togglePause(panelId, isGlobalPaused);
+            });
+
+            // 버튼 상태 업데이트
+            if (btn) {
+                btn.classList.toggle('active');
+                const icon = btn.querySelector('i');
+                const text = btn.querySelector('span');
+                if (isGlobalPaused) {
+                    icon.className = 'fas fa-play';
+                    text.textContent = '전체 재생';
+                } else {
+                    icon.className = 'fas fa-pause';
+                    text.textContent = '전체 일시정지';
+                }
+            }
+        }
+
+        // 전체 패널 줄바꿈 제어
+        function toggleGlobalWrap() {
+            isGlobalWrapped = !isGlobalWrapped;
+            const btn = document.getElementById('global-wrap-btn');
+            
+            document.querySelectorAll('.panel').forEach(panel => {
+                const panelId = panel.id.replace('panel-', '');
+                toggleWrap(panelId, isGlobalWrapped);
+            });
+
+            // 버튼 상태 업데이트
+            if (btn) {
+                btn.classList.toggle('active');
+                const text = btn.querySelector('span');
+                if (isGlobalWrapped) {
+                    text.textContent = '전체 줄바꿈 표시';
+                } else {
+                    text.textContent = '전체 한 줄 표시';
+                }
+            }
+        }
+
+        // 패널 추가 시 전역 상태 적용
+        function addNewPanel(savedPanel = null) {
+            const panel = savedPanel || createPanelTemplate(Date.now().toString());
+            panels.push(panel);
+            
+            const dashboard = document.querySelector('.dashboard');
+            dashboard.appendChild(createPanelElement(panel));
+            
+            messageContainers[panel.id] = document.getElementById(`${panel.id}-list`);
+            connectToWebSocket(panel.id);
+            
+            // 새 패널에 전역 필터 적용
+            const globalFilter = document.getElementById('global-filter-input');
+            if (globalFilter && globalFilter.value) {
+                const filterInput = document.querySelector(`#panel-${panel.id} .filter-input`);
+                if (filterInput) {
+                    filterInput.value = globalFilter.value;
+                    filterMessages(panel.id, globalFilter.value);
+                }
+            }
+
+            // 새 패널에 전역 일시정지 상태 적용
+            if (isGlobalPaused) {
+                togglePause(panel.id, true);
+            }
+
+            // 새 패널에 전역 줄바꿈 상태 적용
+            if (isGlobalWrapped) {
+                toggleWrap(panel.id, true);
+            }
+            
+            saveState();
+        }
+        
+        // 패널 삭제
+        function deletePanel(id) {
+            const panel = document.getElementById(`panel-${id}`);
+            if (panel) {
+                panel.remove();
+                panels = panels.filter(p => p.id !== id);
+                
+                if (connections.has(id)) {
+                    connections.get(id).disconnect();
+                    connections.delete(id);
+                }
+                
+                delete messageContainers[id];
+                saveState();
+            }
+        }
+        
+        // 패널 제목 업데이트
+        function updatePanelTitle(id, newTitle) {
+            const panel = panels.find(p => p.id === id);
+            if (panel) {
+                panel.title = newTitle;
+                saveState();
+            }
+        }
+        
+        // 상태 저장
+        function saveState() {
+            const state = panels.map(panel => ({
+                id: panel.id,
+                title: panel.title,
+                wsUrl: document.querySelector(`.ws-input[data-type="${panel.id}"]`).value,
+                topic: document.querySelector(`.topic-input[data-type="${panel.id}"]`).value,
+                wrap: panel.wrap,
+                filter: document.querySelector(`#panel-${panel.id} .filter-input`)?.value || '',
+                paused: panel.paused,
+                position: Array.from(document.querySelectorAll('.panel')).findIndex(p => p.id === `panel-${panel.id}`)
+            }));
+            localStorage.setItem('monitoringPanels', JSON.stringify(state));
+        }
+        
+        // 상태 복원
+        function loadState() {
+            const saved = localStorage.getItem('monitoringPanels');
+            if (saved) {
+                const state = JSON.parse(saved);
+                state.sort((a, b) => a.position - b.position);
+                
+                // 첫 번째 패널의 상태로 전역 상태 초기화
+                if (state.length > 0) {
+                    isGlobalWrapped = state[0].wrap;
+                    isGlobalPaused = state[0].paused;
+                    
+                    // 전역 버튼 상태 업데이트
+                    const wrapBtn = document.getElementById('global-wrap-btn');
+                    const pauseBtn = document.getElementById('global-pause-btn');
+                    
+                    if (wrapBtn) {
+                        wrapBtn.classList.toggle('active', isGlobalWrapped);
+                        wrapBtn.querySelector('span').textContent = 
+                            isGlobalWrapped ? '전체 줄바꿈 표시' : '전체 한 줄 표시';
+                    }
+                    
+                    if (pauseBtn) {
+                        pauseBtn.classList.toggle('active', isGlobalPaused);
+                        const icon = pauseBtn.querySelector('i');
+                        const text = pauseBtn.querySelector('span');
+                        if (isGlobalPaused) {
+                            icon.className = 'fas fa-play';
+                            text.textContent = '전체 재생';
+                        }
+                    }
+                }
+
+                state.forEach(panel => {
+                    const newPanel = createPanelTemplate(
+                        panel.id,
+                        panel.title,
+                        panel.wsUrl,
+                        panel.topic,
+                        panel.wrap
+                    );
+                    newPanel.paused = panel.paused;
+                    addNewPanel(newPanel);
+                    
+                    // pause 상태 복원
+                    if (panel.paused) {
+                        const pauseBtn = document.querySelector(`#panel-${panel.id} .pause-toggle`);
+                        if (pauseBtn) {
+                            pauseBtn.classList.add('active');
+                            pauseBtn.title = '메시지 스트림 재개';
+                            const messageList = document.getElementById(`${panel.id}-list`);
+                            if (messageList) {
+                                messageList.classList.add('paused');
+                            }
+                        }
+                    }
+                });
+            } else {
+                addNewPanel();
+            }
+        }
+
+        function handleStompMessage(type, message, force = false) {
+            try {
+                const data = JSON.parse(message.body);
+                const container = messageContainers[type];
+                if (!container) return;
+
+                const panel = panels.find(p => p.id === type);
+                if (panel?.paused && !force) {
+                    // 일시정지 상태일 때 메시지 저장
+                    panel.pausedMessages.push(message);
+                    const pauseBtn = document.querySelector(`#panel-${type} .pause-toggle`);
+                    pauseBtn.setAttribute('data-new-messages',
+                        `${panel.pausedMessages.length}`);
+                    return;
+                }
+
+                // 최근 수신 시간 업데이트
+                const timeSpan = document.querySelector(`.last-received[data-type="${type}"]`);
+                if (timeSpan) {
+                    const date = new Date(data.timestamp * 1000);
+                    const time = `${date.toLocaleTimeString()}.${date.getMilliseconds().toString().padStart(3, '0')}`;
+                    timeSpan.textContent = `${time}`;
+                }
+                
+                // 패널 상태 업데이트
+                const hasError = data.data.status === 'error' || 
+                    (data.data.status_code && data.data.status_code >= 400) ||
+                    data.data.status === 'failed';
+                const panelElement = document.getElementById(`panel-${type}`);
+                if (panelElement) {
+                    panelElement.className = `panel ${hasError ? 'status-error' : 'status-normal'}`;
+                }
+
+                // JSON 데이터 포맷팅 시 timestamp도 상세하게 표시
+                const formattedData = {
+                    ...data,
+                    timestamp: (() => {
+                        const date = new Date(data.timestamp * 1000);
+                        return `${date.toLocaleTimeString()}.${date.getMilliseconds().toString().padStart(3, '0')}`;
+                    })()
+                };
+                
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message-item${panel?.wrap ? ' nowrap' : ''}`;
+                
+                // JSON 데이터를 보기 좋게 포맷팅
+                let formattedJson;
+                if (panel?.wrap) {
+                    // 줄바꿈 OFF: 모든 내용을 한 줄로
+                    formattedJson = JSON.stringify(formattedData);
+                } else {
+                    // 줄바꿈 ON: 보기 좋게 포맷팅
+                    formattedJson = JSON.stringify(formattedData, null, 2);
+                }
+                messageDiv.textContent = formattedJson;
+                messageDiv.style.fontFamily = 'Consolas, monospace';
+                messageDiv.style.fontSize = '11px';
+                
+                // 성공/실패 상태에 따른 스타일 적용
+                if (data.data.status === 'success' || 
+                    (data.data.status_code && data.data.status_code < 400) ||
+                    data.data.status === 'completed') {
+                    messageDiv.classList.add('status-success');
+                } else if (data.data.status === 'error' || 
+                    (data.data.status_code && data.data.status_code >= 400)) {
+                    messageDiv.classList.add('status-error');
+                }
+
+                container.insertBefore(messageDiv, container.firstChild);
+
+                // 최대 100개까지만 보관
+                if (container.children.length > 100) {
+                    container.removeChild(container.lastChild);
+                }
+
+                // 카운터 업데이트
+                const counter = document.querySelector(`.message-counter[data-type="${type}"]`);
+                if (counter) {
+                    const visibleCount = Array.from(container.children)
+                        .filter(msg => msg.style.display !== 'none').length;
+                    counter.textContent = `${visibleCount}`;
+                }
+            } catch (e) {
+                console.error('메시지 처리 중 오류:', e, message);
+                const panelElement = document.getElementById(`panel-${type}`);
+                if (panelElement) {
+                    panelElement.className = 'panel status-error';
+                }
+            }
+        }
+
+        // 줄바꿈 토글 함수
+        function toggleWrap(panelId, isWrapped) {
+            const panel = panels.find(p => p.id === panelId);
+            if (panel) {
+                panel.wrap = isWrapped;
+                const messageList = document.getElementById(`${panelId}-list`);
+                const toggleBtn = document.querySelector(`#panel-${panelId} .wrap-toggle`);
+                
+                if (toggleBtn) {
+                    if (isWrapped) {
+                        toggleBtn.classList.add('active');
+                        toggleBtn.title = '한 줄 표시 OFF';
+                    } else {
+                        toggleBtn.classList.remove('active');
+                        toggleBtn.title = '한 줄 표시 ON';
+                    }
+                }
+                
+                if (messageList) {
+                    Array.from(messageList.children).forEach(msg => {
+                        // 기존 메시지의 내용도 포맷 변경
+                        const data = JSON.parse(msg.textContent);
+                        msg.className = `message-item${isWrapped ? ' nowrap' : ''}`;
+                        msg.textContent = isWrapped ? 
+                            JSON.stringify(data) : 
+                            JSON.stringify(data, null, 2);
+                    });
+                }
+                saveState();
+            }
+        }
+
+        function filterMessages(panelId, filterText) {
+            const messageList = document.getElementById(`${panelId}-list`);
+            if (!messageList) return;
+
+            const filters = filterText.toLowerCase().split(',').map(f => f.trim());
+            let visibleCount = 0;
+
+            Array.from(messageList.children).forEach(msg => {
+                try {
+                    const data = JSON.parse(msg.textContent);
+                    const shouldShow = filters.length === 0 || filters.every(filter => {
+                        if (!filter) return true;
+                        const [key, value] = filter.split(':').map(s => s.trim());
+                        if (!key || !value) return true;
+
+                        // 중첩된 객체 속성 검색
+                        const getValue = (obj, path) => {
+                            return path.split('.').reduce((o, i) => o?.[i], obj);
+                        };
+
+                        const actualValue = String(getValue(data, key) || 
+                                            getValue(data.data, key) || '').toLowerCase();
+                        return actualValue.includes(value.toLowerCase());
+                    });
+
+                    msg.style.display = shouldShow ? '' : 'none';
+                    if (shouldShow) visibleCount++;
+                } catch (e) {
+                    console.error('필터링 중 오류:', e);
+                }
+            });
+
+            // 카운터 업데이트
+            const counter = document.querySelector(`.message-counter[data-type="${panelId}"]`);
+            if (counter) {
+                counter.textContent = `(${visibleCount})`;
+            }
+        }
+
+        function togglePause(panelId, isPaused) {
+            const panel = panels.find(p => p.id === panelId);
+            if (panel) {
+                panel.paused = isPaused;
+                const messageList = document.getElementById(`${panelId}-list`);
+                const pauseBtn = document.querySelector(`#panel-${panelId} .pause-toggle`);
+                
+                if (pauseBtn) {
+                    if (isPaused) {
+                        pauseBtn.classList.add('active');
+                        pauseBtn.title = '메시지 스트림 재개';
+                        messageList.classList.add('paused');
+                    } else {
+                        pauseBtn.classList.remove('active');
+                        pauseBtn.title = '메시지 스트림 일시정지';
+                        messageList.classList.remove('paused');
+                        
+                        // 일시정지 중에 수신된 메시지들 추가
+                        if (panel.pausedMessages.length > 0) {
+                            panel.pausedMessages.forEach(msg => {
+                                handleStompMessage(panelId, msg, true);
+                            });
+                            panel.pausedMessages = [];
+                            pauseBtn.removeAttribute('data-new-messages');
+                        }
+                    }
+                    // 상태 변경 즉시 저장
+                    saveState();
+                    
+                    // pause 버튼의 아이콘 변경
+                    const icon = pauseBtn.querySelector('i');
+                    if (icon) {
+                        icon.className = isPaused ? 'fas fa-play' : 'fas fa-pause';
+                    }
+                }
+            }
+        }
+
+        function handleDragEnd(e) {
+            this.classList.remove('dragging');
+            document.querySelector('.dashboard').classList.remove('dragging');
+            
+            draggedPanel = null;
+            saveState();
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            
+            const dashboard = document.querySelector('.dashboard');
+            dashboard.classList.add('dragging');
+            
+            if (this !== draggedPanel && this !== placeholder) {
+                const allPanels = [...dashboard.querySelectorAll('.panel')];
+                const draggingIndex = allPanels.indexOf(draggedPanel);
+                const dropIndex = allPanels.indexOf(this);
+                
+                if (draggingIndex < dropIndex) {
+                    this.parentNode.insertBefore(draggedPanel, this.nextSibling);
+                } else {
+                    this.parentNode.insertBefore(draggedPanel, this);
+                }
+            }
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            
+            // 패널 순서 업데이트
+            const newPanels = [];
+            document.querySelectorAll('.panel').forEach(panel => {
+                const panelData = panels.find(p => `panel-${p.id}` === panel.id);
+                if (panelData) {
+                    newPanels.push(panelData);
+                }
+            });
+            panels = newPanels;
+            saveState();
+        }
+    </script>
+</body>
+</html> 

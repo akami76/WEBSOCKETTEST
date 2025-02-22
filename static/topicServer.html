@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>토픽 메시지 발송기</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f0f0f0;
+        }
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            width: 100%;
+        }
+        .panel {
+            background: white;
+            padding: 8px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            font-size: 11px;
+            width: 100%;
+            box-sizing: border-box;
+            min-width: 0;
+            position: relative;
+            z-index: 1;
+        }
+        .panel-header {
+            display: flex;
+            gap: 2px;
+            padding-bottom: 4px;
+            flex-wrap: wrap;
+            overflow-x: auto;
+            flex-direction: column;
+        }
+        .panel-header-top {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            width: 100%;
+        }
+        h3 {
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        h2 { 
+            margin-top: 0; 
+            font-size: 12px;
+            color: #333;
+        }
+        .toolbar {
+            background: white;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        .add-panel-btn {
+            padding: 5px 15px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .add-panel-btn:hover {
+            background: #45a049;
+        }
+        .message-input {
+            width: 100%;
+            height: 200px;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+            resize: vertical;
+        }
+        .connection-info {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+        .connection-info input {
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .connection-info input[type="text"] {
+            flex: 1;
+        }
+        .connection-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .connection-status.connected {
+            background-color: #4caf50;
+        }
+        .connection-status.disconnected {
+            background-color: #f44336;
+        }
+        .send-btn {
+            padding: 8px 20px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .send-btn:hover {
+            background: #1976D2;
+        }
+        .send-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .message-history {
+            height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-top: 10px;
+            font-family: 'Consolas', monospace;
+            font-size: 10px;
+            background-color: #f8f9fa;
+        }
+        .message-item {
+            margin: 5px 0;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+            font-size: 11px;
+        }
+        .message-item.success {
+            color: #2e7d32;
+        }
+        .message-item.error {
+            color: #c62828;
+        }
+        .template-select {
+            width: 100%;
+            padding: 5px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .send-controls {
+            display: flex;
+            gap: 5px;
+            margin-top: 10px;
+            align-items: center;
+        }
+        .interval-input {
+            width: 80px;
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .repeat-btn {
+            padding: 8px 20px;
+            background: #FF9800;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .repeat-btn:hover {
+            background: #F57C00;
+        }
+        .repeat-btn.active {
+            background: #E65100;
+        }
+        .repeat-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <h3>토픽 메시지 발송기</h3>
+    <div class="toolbar">
+        <button class="add-panel-btn" onclick="addNewPanel()">+ 새 토픽 패널 추가</button>
+    </div>
+    <div class="dashboard">
+        <!-- 패널들이 여기에 동적으로 추가됩니다 -->
+    </div>
+
+    <script>
+        const messageTemplates = {
+            'default': {
+                name: '기본 요청 템플릿',
+                template: {
+                    timestamp: Date.now() / 1000,
+                    type: "request",
+                    data: {
+                        method: "GET",
+                        path: "/api/example",
+                        status: "success",
+                        status_code: 200,
+                        request_id: "req_" + Math.random().toString(36).substring(7),
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": "Bearer token123"
+                        },
+                        body: {
+                            "key": "value"
+                        }
+                    }
+                }
+            },
+            'error': {
+                name: '에러 응답 템플릿',
+                template: {
+                    timestamp: Date.now() / 1000,
+                    type: "error",
+                    data: {
+                        method: "POST",
+                        path: "/api/example",
+                        status: "error",
+                        status_code: 500,
+                        request_id: "req_" + Math.random().toString(36).substring(7),
+                        error: {
+                            code: "INTERNAL_SERVER_ERROR",
+                            message: "Internal Server Error",
+                            details: "Detailed error message here"
+                        }
+                    }
+                }
+            },
+            'process': {
+                name: '처리 상태 템플릿',
+                template: {
+                    timestamp: Date.now() / 1000,
+                    type: "process",
+                    data: {
+                        process_id: "proc_" + Math.random().toString(36).substring(7),
+                        status: "processing",
+                        progress: 50,
+                        message: "Processing request...",
+                        details: {
+                            step: "VALIDATION",
+                            total_steps: 3,
+                            current_step: 1
+                        }
+                    }
+                }
+            },
+            'response': {
+                name: '응답 템플릿',
+                template: {
+                    timestamp: Date.now() / 1000,
+                    type: "response",
+                    data: {
+                        request_id: "req_" + Math.random().toString(36).substring(7),
+                        status: "completed",
+                        status_code: 200,
+                        response_time: 150,
+                        body: {
+                            "result": "success",
+                            "data": {
+                                "id": 123,
+                                "name": "Example"
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        class StompClient {
+            constructor(url) {
+                this.url = url;
+                this.connected = false;
+                this.subscriptions = new Map();
+                this.connectPromise = null;
+                this.connectionResolver = null;
+                this.ws = null;
+                this.onConnectionChange = null;
+            }
+
+            async connect() {
+                if (this.connected) return;
+                
+                if (this.connectPromise) {
+                    return this.connectPromise;
+                }
+                
+                this.connectPromise = new Promise((resolve) => {
+                    this.connectionResolver = resolve;
+                });
+
+                try {
+                    this.ws = new WebSocket(this.url);
+                    
+                    this.ws.onopen = () => {
+                        console.log("WebSocket opened, sending CONNECT frame");
+                        // STOMP CONNECT 프레임 전송
+                        this.ws.send(JSON.stringify({
+                            command: "CONNECT",
+                            headers: {
+                                "accept-version": "1.2",
+                                "heart-beat": "10000,10000"
+                            }
+                        }));
+                    };
+
+                    this.ws.onmessage = (event) => {
+                        const frame = JSON.parse(event.data);
+                        console.log("Received frame:", frame);
+                        
+                        if (frame.command === "CONNECTED") {
+                            this.connected = true;
+                            if (this.onConnectionChange) {
+                                this.onConnectionChange(true);
+                            }
+                            if (this.connectionResolver) {
+                                this.connectionResolver();
+                                this.connectionResolver = null;
+                            }
+                        }
+                    };
+
+                    this.ws.onclose = () => {
+                        console.log("WebSocket closed, attempting reconnect in 5s");
+                        this.connected = false;
+                        this.connectPromise = null;
+                        if (this.onConnectionChange) {
+                            this.onConnectionChange(false);
+                        }
+                        setTimeout(() => this.connect(), 5000);
+                    };
+
+                    this.ws.onerror = (error) => {
+                        console.error("WebSocket error:", error);
+                        this.connected = false;
+                        this.connectPromise = null;
+                        if (this.onConnectionChange) {
+                            this.onConnectionChange(false);
+                        }
+                    };
+
+                } catch (error) {
+                    console.error("Connection error:", error);
+                    this.connected = false;
+                    this.connectPromise = null;
+                    if (this.onConnectionChange) {
+                        this.onConnectionChange(false);
+                    }
+                    setTimeout(() => this.connect(), 5000);
+                }
+                
+                return this.connectPromise;
+            }
+
+            send(destination, body) {
+                if (!this.connected || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                    console.error("WebSocket is not connected");
+                    return false;
+                }
+
+                try {
+                    // STOMP SEND 프레임 구성
+                    const frame = {
+                        command: "SEND",
+                        headers: {
+                            destination: destination,
+                            "content-type": "application/json"
+                        },
+                        body: body
+                    };
+                    
+                    console.log("Sending STOMP frame:", frame);
+                    this.ws.send(JSON.stringify(frame));
+                    return true;
+                } catch (error) {
+                    console.error("Failed to send message:", error);
+                    return false;
+                }
+            }
+
+            subscribe(destination) {
+                if (!this.connected || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                    console.error("WebSocket is not connected");
+                    return false;
+                }
+
+                try {
+                    const subscriptionId = `sub-${Math.random().toString(36).substring(7)}`;
+                    // STOMP SUBSCRIBE 프레임 전송
+                    const frame = {
+                        command: "SUBSCRIBE",
+                        headers: {
+                            id: subscriptionId,
+                            destination: destination
+                        }
+                    };
+                    
+                    console.log("Subscribing to:", destination);
+                    this.ws.send(JSON.stringify(frame));
+                    this.subscriptions.set(destination, subscriptionId);
+                    return true;
+                } catch (error) {
+                    console.error("Failed to subscribe:", error);
+                    return false;
+                }
+            }
+
+            disconnect() {
+                if (this.ws && this.connected) {
+                    // STOMP DISCONNECT 프레임 전송
+                    this.ws.send(JSON.stringify({
+                        command: "DISCONNECT"
+                    }));
+                    this.ws.close();
+                }
+                this.connected = false;
+                this.subscriptions.clear();
+                if (this.onConnectionChange) {
+                    this.onConnectionChange(false);
+                }
+            }
+        }
+
+        const connections = new Map();
+        const intervals = new Map();  // 반복 발송 인터벌 저장
+        let panels = [];
+
+        function createPanelTemplate(id) {
+            return {
+                id,
+                wsUrl: 'ws://localhost:8080/ws',
+                topic: '/topic/request'
+            };
+        }
+
+        function createPanelElement(panel) {
+            const div = document.createElement('div');
+            div.className = 'panel';
+            div.id = `panel-${panel.id}`;
+            
+            div.innerHTML = `
+                <div class="panel-header">
+                    <div class="panel-header-top">
+                        <div class="connection-status disconnected" data-type="${panel.id}"></div>
+                        <h2>토픽 메시지 발송</h2>
+                    </div>
+                    <div class="connection-info">
+                        <input type="text" class="ws-input" value="${panel.wsUrl}" data-type="${panel.id}" placeholder="WebSocket URL">
+                        <input type="text" class="topic-input" value="${panel.topic}" data-type="${panel.id}" placeholder="토픽">
+                    </div>
+                </div>
+                <select class="template-select" onchange="loadTemplate('${panel.id}', this.value)">
+                    <option value="">템플릿 선택...</option>
+                    ${Object.entries(messageTemplates).map(([key, value]) => 
+                        `<option value="${key}">${value.name}</option>`
+                    ).join('')}
+                </select>
+                <textarea class="message-input" data-type="${panel.id}" placeholder="JSON 메시지 입력"></textarea>
+                <div class="send-controls">
+                    <button class="send-btn" onclick="sendMessage('${panel.id}')" disabled>메시지 전송</button>
+                    <input type="number" class="interval-input" value="1000" min="100" step="100" data-type="${panel.id}" placeholder="주기 (ms)">
+                    <button class="repeat-btn" onclick="toggleRepeat('${panel.id}')" disabled>반복 발송</button>
+                </div>
+                <div class="message-history" id="history-${panel.id}"></div>
+            `;
+
+            return div;
+        }
+
+        function loadTemplate(panelId, templateKey) {
+            if (!templateKey) return;
+            
+            const template = messageTemplates[templateKey];
+            if (!template) return;
+
+            const messageInput = document.querySelector(`.message-input[data-type="${panelId}"]`);
+            if (messageInput) {
+                const templateData = {...template.template};
+                templateData.timestamp = Math.floor(Date.now() / 1000);
+                
+                // 새로운 요청/프로세스 ID 생성
+                if (templateData.data && templateData.data.request_id) {
+                    templateData.data.request_id = "req_" + Math.random().toString(36).substring(7);
+                }
+                if (templateData.data && templateData.data.process_id) {
+                    templateData.data.process_id = "proc_" + Math.random().toString(36).substring(7);
+                }
+                
+                messageInput.value = JSON.stringify(templateData, null, 2);
+                validateJson(panelId);
+            }
+        }
+
+        function validateJson(panelId) {
+            const messageInput = document.querySelector(`.message-input[data-type="${panelId}"]`);
+            const sendBtn = document.querySelector(`#panel-${panelId} .send-btn`);
+            const repeatBtn = document.querySelector(`#panel-${panelId} .repeat-btn`);
+            const client = connections.get(panelId);
+            
+            // 메시지가 비어있지 않고 연결되어 있으면 전송 가능
+            const isConnected = client && client.connected;
+            if (sendBtn) sendBtn.disabled = !isConnected;
+            if (repeatBtn) repeatBtn.disabled = !isConnected;
+            
+            return true;
+        }
+
+        function updateConnectionStatus(type, connected) {
+            const status = document.querySelector(`.connection-status[data-type="${type}"]`);
+            const sendBtn = document.querySelector(`#panel-${type} .send-btn`);
+            const repeatBtn = document.querySelector(`#panel-${type} .repeat-btn`);
+            
+            if (status) {
+                status.className = `connection-status ${connected ? 'connected' : 'disconnected'}`;
+            }
+            
+            // 연결 상태만 확인
+            if (sendBtn && repeatBtn) {
+                sendBtn.disabled = !connected;
+                repeatBtn.disabled = !connected;
+            }
+
+            // 연결 상태에 따른 메시지 표시
+            if (connected) {
+                addMessageToHistory(type, "WebSocket 연결됨", true);
+            } else {
+                addMessageToHistory(type, "WebSocket 연결 끊김", false);
+                stopRepeat(type);  // 연결이 끊기면 반복 발송 중지
+            }
+        }
+
+        function addMessageToHistory(panelId, message, success = true) {
+            const history = document.getElementById(`history-${panelId}`);
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message-item ${success ? 'success' : 'error'}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            messageDiv.textContent = `[${timestamp}] ${message}`;
+            
+            history.insertBefore(messageDiv, history.firstChild);
+            
+            if (history.children.length > 100) {
+                history.removeChild(history.lastChild);
+            }
+        }
+
+        async function sendMessage(panelId) {
+            const messageInput = document.querySelector(`.message-input[data-type="${panelId}"]`);
+            const topicInput = document.querySelector(`.topic-input[data-type="${panelId}"]`);
+            
+            const client = connections.get(panelId);
+            if (!client || !client.connected) {
+                addMessageToHistory(panelId, "WebSocket 연결이 없습니다.", false);
+                return;
+            }
+
+            try {
+                const success = client.send(topicInput.value, messageInput.value);
+                
+                if (success) {
+                    addMessageToHistory(panelId, `메시지 전송 성공 - ${topicInput.value} (${messageInput.value.substring(0, 100)}...)`);
+                } else {
+                    addMessageToHistory(panelId, "메시지 전송 실패", false);
+                }
+            } catch (e) {
+                addMessageToHistory(panelId, `메시지 전송 중 오류: ${e.message}`, false);
+            }
+        }
+
+        function connectToWebSocket(type) {
+            const wsInput = document.querySelector(`.ws-input[data-type="${type}"]`);
+            const topicInput = document.querySelector(`.topic-input[data-type="${type}"]`);
+            
+            if (!wsInput || !topicInput) return;
+            
+            if (connections.has(type)) {
+                connections.get(type).disconnect();
+            }
+            
+            const client = new StompClient(wsInput.value);
+            client.onConnectionChange = (connected) => {
+                updateConnectionStatus(type, connected);
+                validateJson(type);
+                
+                // 연결되면 자동으로 토픽 구독
+                if (connected) {
+                    client.subscribe(topicInput.value);
+                    addMessageToHistory(type, `토픽 등록됨: ${topicInput.value}`, true);
+                }
+            };
+            
+            connections.set(type, client);
+            client.connect().catch(error => {
+                console.error(`Failed to connect ${type}:`, error);
+                addMessageToHistory(type, `연결 실패: ${error.message}`, false);
+            });
+        }
+
+        function addNewPanel() {
+            const panel = createPanelTemplate(Date.now().toString());
+            panels.push(panel);
+            
+            const dashboard = document.querySelector('.dashboard');
+            dashboard.appendChild(createPanelElement(panel));
+            
+            // 기본 JSON 템플릿 설정
+            const messageInput = document.querySelector(`.message-input[data-type="${panel.id}"]`);
+            if (messageInput) {
+                messageInput.value = JSON.stringify(messageTemplates.default.template, null, 2);
+                messageInput.addEventListener('input', () => validateJson(panel.id));
+            }
+            
+            connectToWebSocket(panel.id);
+        }
+
+        // 페이지 로드 시 첫 번째 패널 추가
+        window.addEventListener('load', () => {
+            addNewPanel();
+        });
+
+        // WebSocket URL이나 토픽 변경 시 재연결 및 재구독
+        document.addEventListener('change', (e) => {
+            if (e.target.matches('.ws-input, .topic-input')) {
+                const type = e.target.dataset.type;
+                const client = connections.get(type);
+                const topicInput = document.querySelector(`.topic-input[data-type="${type}"]`);
+                
+                if (client && client.connected && e.target.matches('.topic-input')) {
+                    // 토픽이 변경된 경우 새로운 토픽 구독
+                    client.subscribe(topicInput.value);
+                    addMessageToHistory(type, `토픽 변경됨: ${topicInput.value}`, true);
+                } else {
+                    // WebSocket URL이 변경된 경우 전체 재연결
+                    connectToWebSocket(type);
+                }
+            }
+        });
+
+        function toggleRepeat(panelId) {
+            const repeatBtn = document.querySelector(`#panel-${panelId} .repeat-btn`);
+            const intervalInput = document.querySelector(`.interval-input[data-type="${panelId}"]`);
+            
+            if (intervals.has(panelId)) {
+                stopRepeat(panelId);
+            } else {
+                startRepeat(panelId, parseInt(intervalInput.value));
+            }
+        }
+
+        function startRepeat(panelId, interval) {
+            if (intervals.has(panelId)) return;
+            
+            const repeatBtn = document.querySelector(`#panel-${panelId} .repeat-btn`);
+            const intervalId = setInterval(() => sendMessage(panelId), interval);
+            
+            intervals.set(panelId, intervalId);
+            repeatBtn.classList.add('active');
+            repeatBtn.textContent = '반복 중지';
+            
+            addMessageToHistory(panelId, `반복 발송 시작 (주기: ${interval}ms)`, true);
+        }
+
+        function stopRepeat(panelId) {
+            const intervalId = intervals.get(panelId);
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervals.delete(panelId);
+                
+                const repeatBtn = document.querySelector(`#panel-${panelId} .repeat-btn`);
+                if (repeatBtn) {
+                    repeatBtn.classList.remove('active');
+                    repeatBtn.textContent = '반복 발송';
+                }
+                
+                addMessageToHistory(panelId, "반복 발송 중지", true);
+            }
+        }
+
+        // 패널 삭제 시 반복 발송 중지
+        function deletePanel(panelId) {
+            stopRepeat(panelId);
+            const panel = document.getElementById(`panel-${panelId}`);
+            if (panel) {
+                panel.remove();
+                panels = panels.filter(p => p.id !== panelId);
+                
+                if (connections.has(panelId)) {
+                    connections.get(panelId).disconnect();
+                    connections.delete(panelId);
+                }
+            }
+        }
+    </script>
+</body>
+</html> 
